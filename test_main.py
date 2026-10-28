@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from concurrent.futures import ThreadPoolExecutor
 
 import main
 
@@ -135,3 +136,41 @@ def test_purchase_invalid_item(item_id):
 
     cancel_response = client.delete("/")
     assert cancel_response.headers["X-Coins"] == "2"
+
+def test_simultaneous_purchases_of_last_drink():
+    # Leave one drink in stock and insert four quarters.
+    main.inventory[0] = 1
+    for _ in range(4):
+        insert_quarter()
+
+    # Submit two purchase requests from separate threads.
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(client.put, "/inventory/0")
+            for _ in range(2)
+        ]
+        responses = [future.result() for future in futures]
+
+    # Only one request should successfully purchase the last drink.
+    status_codes = sorted(response.status_code for response in responses)
+    assert status_codes == [200, 404]
+    assert client.get("/inventory").json() == [0, 5, 5]
+
+    successful_response = next(
+        response for response in responses
+        if response.status_code == 200
+    )
+    assert successful_response.json() == {"quantity": 1}
+    assert successful_response.headers["X-Coins"] == "2"
+    assert successful_response.headers["X-Inventory-Remaining"] == "0"
+
+    failed_response = next(
+        response for response in responses
+        if response.status_code == 404
+    )
+    assert failed_response.headers["X-Coins"] == "0"
+
+    # The successful purchase already returned the extra quarters.
+    cancel_response = client.delete("/")
+    assert cancel_response.status_code == 204
+    assert cancel_response.headers["X-Coins"] == "0"
