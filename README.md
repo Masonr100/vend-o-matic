@@ -93,3 +93,39 @@ The headers should include `X-Coins: 0` and `X-Inventory-Remaining: 4`.
 If fewer than two quarters have been inserted, a purchase returns `403` and
 the `X-Coins` header shows how many quarters are currently held. An
 out-of-stock drink returns `404` and also reports the current coin count.
+
+## Design decisions
+
+- **FastAPI:** Provides HTTP routing, JSON handling, input validation,
+  and interactive API documentation.
+- **Integer coin counts:** All monetary values are tracked as counts of
+  quarters, avoiding floating-point arithmetic.
+- **In-memory state:** Keeps the service small and avoids a database
+  dependency. Inventory and inserted coins reset when the server restarts.
+- **Thread lock:** Protects inventory and coin operations from conflicting
+  updates within a single server process. The application must run with
+  one worker because separate processes do not share this state.
+- **Failed purchases preserve state:** Customers can add another quarter,
+  choose another beverage, or cancel without losing inserted coins.
+- **Item IDs:** The specification does not define the ID range, so this
+  implementation uses IDs 0, 1, and 2.
+- **Out-of-stock precedence:** Stock is checked before funds, so a sold-out
+  beverage returns 404 even when fewer than two quarters are inserted.
+
+## Verification
+
+The test suite covers inventory, coin insertion, cancellation, purchases,
+change, invalid inputs, sold-out beverages, and concurrent purchase
+attempts for the last beverage.
+
+GitHub Actions installs dependencies and runs the tests on macOS for
+pushes and pull requests.
+
+## Production considerations
+
+This service models one vending machine with one shared transaction.
+It assumes the physical machine accepts only quarters, as specified.
+
+A production implementation would need a trusted connection to the
+machine's hardware, durable state, and a strategy for recovering from
+failures between recording a purchase and physically dispensing a drink.
