@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response
 from pydantic import BaseModel, StrictInt
 from threading import Lock
+from fastapi.responses import JSONResponse
 
 app = FastAPI()
 
@@ -49,25 +50,56 @@ def get_item_inventory(item_id: int, response: Response):
 
         return inventory[item_id]
 
-@app.put("/inventory/{item_id}")
+class PurchaseResponse(BaseModel):
+    quantity: StrictInt
+
+
+@app.put(
+    "/inventory/{item_id}",
+    response_model=PurchaseResponse,
+    summary="Purchase one beverage",
+    responses={
+        200: {
+            "description": "One beverage dispensed; extra quarters returned.",
+        },
+        403: {
+            "description": (
+                "Fewer than two quarters inserted. "
+                "Coins remain available for purchase or cancellation."
+            ),
+        },
+        404: {
+            "description": (
+                "The beverage does not exist or is out of stock. "
+                "Inventory and inserted coins are unchanged."
+            ),
+        },
+    },
+)
 def purchase_item(item_id: int, response: Response):
     global coins
 
     with machine_lock:
         if item_id < 0 or item_id >= len(inventory):
-            response.status_code = 404
-            response.headers["X-Coins"] = str(coins)
-            return {"detail": "Item not found"}
+            return JSONResponse(
+                status_code=404,
+                headers={"X-Coins": str(coins)},
+                content={"detail": "Item not found"},
+            )
 
         if inventory[item_id] == 0:
-            response.status_code = 404
-            response.headers["X-Coins"] = str(coins)
-            return {"detail": "Item is out of stock"}
+            return JSONResponse(
+                status_code=404,
+                headers={"X-Coins": str(coins)},
+                content={"detail": "Item is out of stock"},
+            )
 
         if coins < 2:
-            response.status_code = 403
-            response.headers["X-Coins"] = str(coins)
-            return {"detail": "Not enough coins"}
+            return JSONResponse(
+                status_code=403,
+                headers={"X-Coins": str(coins)},
+                content={"detail": "Not enough coins"},
+            )
 
         inventory[item_id] -= 1
         change = coins - 2
