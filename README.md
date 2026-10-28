@@ -13,7 +13,7 @@ tracks inventory, dispenses drinks, and returns change.
 Clone the repository and enter the project folder:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Masonr100/vend-o-matic.git
 cd vend-o-matic
 ```
 
